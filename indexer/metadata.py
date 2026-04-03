@@ -42,6 +42,11 @@ class MetadataStore:
             conn = sqlite3.connect(str(self.db_path), timeout=SQLITE_TIMEOUT)
             cursor = conn.cursor()
 
+            # Enable WAL mode for better concurrency (especially on Windows)
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=5000")  # 5 second busy timeout
+
             # Create files table for storing file metadata
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS files (
