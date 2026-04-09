@@ -1,10 +1,8 @@
 # api/main.py
 # FastAPI backend for AI-powered local file search
 
-import os
 from pathlib import Path
 from typing import Optional, List
-from dataclasses import dataclass
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
@@ -20,7 +18,7 @@ from embeddings.embedder import Embedder
 from indexer.faiss_index import FAISSIndex
 from indexer.bm25_index import BM25Index
 from indexer.metadata import MetadataStore
-from search.query_engine import QueryEngine, SearchResult
+from search.query_engine import QueryEngine
 from watcher.crawler import Crawler
 from watcher.file_watcher import FileWatcher
 
