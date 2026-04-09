@@ -37,10 +37,10 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # GEMINI_MODEL: The embedding model to use for semantic search
-GEMINI_MODEL = "models/embedding-001"
+GEMINI_MODEL = "models/gemini-embedding-001"
 
-# EMBEDDING_DIM: Dimension of the embedding vector (768 for gemini-embedding-001)
-EMBEDDING_DIM = 768
+# EMBEDDING_DIM: Dimension of the embedding vector (3072 for gemini-embedding-001)
+EMBEDDING_DIM = 3072
 
 # EMBED_BATCH_SIZE: Number of documents to process in each embedding batch
 EMBED_BATCH_SIZE = 32
@@ -75,6 +75,7 @@ else:
 # ==============================================================================
 # SUPPORTED_EXTENSIONS: Set of file extensions to index (text and binary formats)
 SUPPORTED_EXTENSIONS = {
+    # Documents
     ".txt",
     ".md",
     ".pdf",
@@ -83,19 +84,74 @@ SUPPORTED_EXTENSIONS = {
     ".pptx",
     ".xlsx",
     ".csv",
+    # Code - Python
     ".py",
+    # Code - JavaScript/TypeScript
     ".js",
+    ".jsx",
     ".ts",
+    ".tsx",
+    ".mjs",
+    # Code - Java
+    ".java",
+    # Code - C/C++
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cc",
+    ".cxx",
+    # Code - C#/.NET
+    ".cs",
+    # Code - Go
+    ".go",
+    # Code - Rust
+    ".rs",
+    # Code - Ruby
+    ".rb",
+    # Code - PHP
+    ".php",
+    # Code - Swift
+    ".swift",
+    # Code - Kotlin
+    ".kt",
+    ".kts",
+    # Web
     ".html",
+    ".htm",
     ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    # Data formats
     ".json",
     ".yaml",
     ".yml",
+    ".xml",
+    ".toml",
+    # Config
+    ".ini",
+    ".cfg",
+    ".conf",
+    # Shell/ Scripts
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".bat",
+    ".ps1",
+    ".cmd",
+    # Other
+    ".log",
+    ".sql",
+    # Images (metadata only)
     ".png",
     ".jpg",
     ".jpeg",
     ".gif",
     ".bmp",
+    ".tiff",
+    ".tif",
+    ".webp",
 }
 
 # IGNORE_DIRS: Directory names to skip during indexing (common non-relevant dirs)
