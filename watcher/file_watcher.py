@@ -224,10 +224,9 @@ class FileWatcher:
         Stops the observer and waits for it to finish cleanly.
         """
         # Stop the observer
-        self.observer.stop()
-
-        # Wait for the observer thread to finish
-        self.observer.join()
+        if self.observer and self.observer.is_alive():
+            self.observer.stop()
+            self.observer.join()
 
         logger.info("File watcher stopped")
 
