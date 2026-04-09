@@ -3,7 +3,6 @@
 # This module provides BM25 index for keyword search.
 
 import pickle
-from pathlib import Path
 from config.config import BM25_INDEX_PATH
 from config.logger import get_logger
 

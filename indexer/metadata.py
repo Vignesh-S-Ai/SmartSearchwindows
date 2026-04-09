@@ -3,7 +3,6 @@
 # This module provides SQLite database for file metadata storage.
 
 import sqlite3
-import json
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -54,7 +53,8 @@ class MetadataStore:
                     size INTEGER,
                     modified_time REAL,
                     indexed_time REAL,
-                    chunk_count INTEGER
+                    chunk_count INTEGER,
+                    file_hash TEXT
                 )
             """)
 
@@ -77,7 +77,11 @@ class MetadataStore:
         return sqlite3.connect(str(self.db_path), timeout=SQLITE_TIMEOUT)
 
     def upsert(
-        self, path: Path, chunk_count: int = 0, size: Optional[int] = None
+        self,
+        path: Path,
+        chunk_count: int = 0,
+        size: Optional[int] = None,
+        file_hash: Optional[str] = None,
     ) -> None:
         """
         Insert or update file metadata.
@@ -86,6 +90,7 @@ class MetadataStore:
             path: Path to the file
             chunk_count: Number of chunks indexed for this file
             size: File size in bytes (optional, will fetch if not provided)
+            file_hash: MD5 hash of file content for duplicate detection
         """
         try:
             # Get file size if not provided
@@ -111,10 +116,10 @@ class MetadataStore:
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO files 
-                (path, size, modified_time, indexed_time, chunk_count)
-                VALUES (?, ?, ?, ?, ?)
+                (path, size, modified_time, indexed_time, chunk_count, file_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (str(path), size, modified_time, indexed_time, chunk_count),
+                (str(path), size, modified_time, indexed_time, chunk_count, file_hash),
             )
 
             conn.commit()
@@ -123,12 +128,15 @@ class MetadataStore:
         except sqlite3.Error as e:
             logger.error(f"Failed to upsert metadata for {path}: {e}")
 
-    def is_indexed(self, path: Path) -> bool:
+    def is_indexed(self, path: Path, current_hash: Optional[str] = None) -> bool:
         """
         Check if a file is already indexed and hasn't changed.
 
+        Uses file hash if provided, otherwise falls back to size+mtime check.
+
         Args:
             path: Path to the file
+            current_hash: Optional MD5 hash of current file content
 
         Returns:
             True if file is indexed and unchanged, False otherwise
@@ -139,7 +147,7 @@ class MetadataStore:
 
             # Get stored metadata for this path
             cursor.execute(
-                "SELECT size, modified_time FROM files WHERE path = ?",
+                "SELECT size, modified_time, file_hash FROM files WHERE path = ?",
                 (str(path),),
             )
             row = cursor.fetchone()
@@ -148,6 +156,22 @@ class MetadataStore:
 
             if row is None:
                 return False
+
+            # If hash provided, check hash first (more reliable)
+            if current_hash and row[2]:  # row[2] is file_hash
+                return row[2] == current_hash
+
+            # Fall back to size and mtime check
+            try:
+                current_size = path.stat().st_size
+                current_mtime = path.stat().st_mtime
+                return row[0] == current_size and row[1] == current_mtime
+            except OSError:
+                return False
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to check indexed status for {path}: {e}")
+            return False
 
             # Compare with current file stats
             try:

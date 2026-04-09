@@ -2,9 +2,7 @@
 # Phase 2: File Watcher & Crawler
 # This module provides FAISS vector index for semantic search.
 
-from typing import Optional
 import json
-from pathlib import Path
 from config.config import FAISS_INDEX_PATH, FAISS_META_PATH, EMBEDDING_DIM
 from config.logger import get_logger
 
