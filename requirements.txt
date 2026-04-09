@@ -12,7 +12,7 @@ pydantic==2.5.3  # Data validation
 python-multipart==0.0.6  # Form data parsing
 
 # Google Gemini API
-google-genai==1.0.0  # Gemini API client
+google-generativeai==0.8.3  # Gemini API client (use this, not google-genai)
 
 # Text processing and search
 rapidfuzz==3.6.1  # Fuzzy string matching
