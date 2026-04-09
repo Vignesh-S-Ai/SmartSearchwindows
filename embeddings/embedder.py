@@ -2,9 +2,7 @@
 # Handles embedding text using Gemini API with exponential backoff retry
 
 import time
-import math
 from typing import Optional
-from pathlib import Path
 
 from config.config import (
     GEMINI_API_KEY,
@@ -156,26 +154,29 @@ class Embedder:
 
         try:
             # Import google genai for API call
-            import google.genai as genai
+            import google.generativeai as genai
 
-            # Configure the client
-            client = genai.Client(api_key=self.api_key)
+            # Configure the client - also set GOOGLE_API_KEY env for the library
+            import os
 
-            # Call the embedding API
-            result = client.models.embed_content(
+            os.environ["GOOGLE_API_KEY"] = self.api_key
+            genai.configure(api_key=self.api_key)
+
+            # Call the embedding API using the correct method
+            result = genai.embed_content(
                 model=self.model,
                 content=text,
             )
 
             # Extract embedding from response
-            if result and hasattr(result, "embedding"):
-                return result.embedding.values
+            if result and "embedding" in result:
+                return result["embedding"]
 
             return None
 
         except ImportError:
-            # google-genai not installed
-            logger.warning("google-genai not installed, using placeholder")
+            # google-generativeai not installed
+            logger.warning("google-generativeai not installed, using placeholder")
             return self._generate_placeholder_embeddings(1)[0]
         except Exception as e:
             # Log any API errors
