@@ -3,18 +3,21 @@
 # This module extracts metadata/text from media files (images, etc.)
 
 from pathlib import Path
+
+from PIL import Image
 from config.logger import get_logger
 
 logger = get_logger(__name__)
+
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB limit
 
 
 def parse_media(path: Path) -> str:
     """
     Parse a media file and extract metadata or text content.
 
-    This function attempts to extract information from media files.
-    For images, it could extract EXIF data or perform OCR.
-    Currently returns empty string as placeholder.
+    For images, extracts EXIF metadata, dimensions, and format info.
+    Could be extended to include OCR in the future.
 
     Args:
         path: Path to the media file
@@ -22,20 +25,85 @@ def parse_media(path: Path) -> str:
     Returns:
         Extracted text/metadata as string, or empty string if extraction fails
     """
-    # Get the file extension in lowercase for consistent comparison
-    ext = path.suffix.lower()
-
-    try:
-        # TODO: Implement actual media parsing for each supported format
-
-        # Image files - could use PIL for EXIF, or pytesseract for OCR
-        if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp"):
-            pass
-
-        # Return empty string - no actual parsing implemented yet
+    if not path.exists():
+        logger.warning(f"File does not exist: {path}")
         return ""
 
+    ext = path.suffix.lower()
+
+    # Supported image extensions
+    image_extensions = {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+    }
+
+    if ext not in image_extensions:
+        logger.info(f"Skipped file {path} (unsupported media type: {ext})")
+        return ""
+
+    try:
+        # Check file size
+        file_size = path.stat().st_size
+        if file_size > MAX_IMAGE_SIZE:
+            logger.info(
+                f"Skipped file {path} (image too large: {file_size / 1024 / 1024:.1f}MB > 10MB)"
+            )
+            return ""
+
+        # Open and extract metadata from image
+        with Image.open(path) as img:
+            text_parts = []
+
+            # Basic file info
+            text_parts.append(f"Filename: {path.name}")
+            text_parts.append(f"Format: {img.format}")
+            text_parts.append(f"Mode: {img.mode}")
+            text_parts.append(f"Size: {img.width}x{img.height}")
+
+            # Try to extract EXIF data
+            try:
+                exif = img.getexif()
+                if exif:
+                    # Common EXIF tags
+                    exif_tags = {
+                        271: "Make",
+                        272: "Model",
+                        306: "DateTime",
+                        36867: "DateTimeOriginal",
+                        37380: "ExposureBias",
+                        37385: "Flash",
+                        33434: "ExposureTime",
+                        41986: "FocalLength",
+                    }
+
+                    for tag_id, tag_name in exif_tags.items():
+                        if tag_id in exif:
+                            text_parts.append(f"{tag_name}: {exif[tag_id]}")
+            except Exception as e:
+                logger.debug(f"No EXIF data for {path}: {e}")
+
+            # Try to extract IPTC data (for stock photos, etc.)
+            try:
+                iptc = img.info.get("IPTC", {})
+                if iptc:
+                    for key, value in iptc.items():
+                        text_parts.append(f"{key}: {value}")
+            except Exception:
+                pass
+
+            result = "\n".join(text_parts)
+
+            if result:
+                logger.debug(f"Successfully extracted metadata from {path}")
+
+            return result
+
     except Exception as e:
-        # Log any errors during parsing
-        logger.warning(f"Failed to parse media {path}: {e}")
+        logger.error(f"Error parsing media file {path}: {e}")
         return ""
