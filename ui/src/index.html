@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>Smart Search</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Search Input Area -->
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Search files..." autocomplete="off">
+    </div>
+
+    <!-- Results List -->
+    <div class="results" id="results">
+      <div class="empty-state">
+        <p>Press <strong>Ctrl+Space</strong> to search</p>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span id="status-text">Ready</span>
+      <button id="settings-btn" class="settings-btn" title="Settings">⚙</button>
+    </div>
+
+    <!-- Settings Popup (outside status-bar) -->
+    <div id="settings-popup" class="settings-popup hidden">
+      <div class="settings-option">
+        <label>
+          <input type="checkbox" id="auto-start-checkbox">
+          Start with Windows
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
