@@ -37,14 +37,25 @@ class FAISSIndex:
 
             self.faiss = faiss
             self.index = self._load_index()
-            self.metadata = self._load_metadata()
+            
+            # Metadata structure:
+            # {
+            #   "chunks": { "0": {...}, "1": {...} },  # Map global index to chunk metadata
+            #   "paths": { "path/to/file": [0, 1, 2] } # Map path to list of global indices
+            # }
+            loaded_meta = self._load_metadata()
+            if loaded_meta and "chunks" in loaded_meta:
+                self.metadata = loaded_meta
+            else:
+                self.metadata = {"chunks": {}, "paths": {}}
+            
             logger.info(f"Loaded FAISS index with {self.get_count()} vectors")
         except ImportError:
             # FAISS not installed - create mock index for testing
             logger.warning("FAISS not available, using mock index")
             self.faiss = None
             self.index = None
-            self.metadata = {}
+            self.metadata = {"chunks": {}, "paths": {}}
 
     def _load_index(self):
         """Load existing FAISS index from disk, or return None if not found."""
@@ -93,24 +104,32 @@ class FAISSIndex:
             return
 
         try:
-            # Convert vectors to numpy array with float32 type
             import numpy as np
-
             arr = np.array(vectors, dtype=np.float32)
 
             # Create index if it doesn't exist
             if self.index is None:
                 self.index = self.faiss.IndexFlatL2(self.embedding_dim)
 
+            # Get the starting index for these new vectors
+            start_idx = self.index.ntotal
+
             # Add vectors to index
             self.index.add(arr)
 
-            # Store metadata - keyed by path to allow removal
-            for meta in metadata:
+            # Store metadata
+            for i, meta in enumerate(metadata):
+                global_idx = start_idx + i
                 path = meta.get("path", "")
-                if path not in self.metadata:
-                    self.metadata[path] = []
-                self.metadata[path].append(meta)
+                
+                # Store in chunks map (key must be string for JSON)
+                self.metadata["chunks"][str(global_idx)] = meta
+                
+                # Store in paths map
+                if path:
+                    if path not in self.metadata["paths"]:
+                        self.metadata["paths"][path] = []
+                    self.metadata["paths"][path].append(global_idx)
 
             # Save after adding
             self.save()
@@ -147,12 +166,10 @@ class FAISSIndex:
             results = []
             for dist, idx in zip(distances[0], indices[0]):
                 if idx >= 0:
-                    # Find metadata for this index
-                    for path, metas in self.metadata.items():
-                        for meta in metas:
-                            if meta.get("chunk_idx") == idx:
-                                results.append((meta, float(dist)))
-                                break
+                    # Retrieve metadata by global index
+                    meta = self.metadata["chunks"].get(str(idx))
+                    if meta:
+                        results.append((meta, float(dist)))
 
             return results
 
@@ -163,14 +180,18 @@ class FAISSIndex:
     def remove_by_path(self, path: str) -> None:
         """
         Remove all vectors associated with a file path.
-
-        Args:
-            path: The file path to remove
+        
+        Note: Current implementation only removes metadata.
+        To truly remove from FAISS index, IndexIDMap or rebuilding is needed.
         """
-        if path in self.metadata:
-            del self.metadata[path]
+        if path in self.metadata["paths"]:
+            indices = self.metadata["paths"][path]
+            for idx in indices:
+                if str(idx) in self.metadata["chunks"]:
+                    del self.metadata["chunks"][str(idx)]
+            del self.metadata["paths"][path]
             self.save()
-            logger.info(f"Removed FAISS entries for {path}")
+            logger.info(f"Removed metadata for {path}")
 
     def get_count(self) -> int:
         """Get the number of vectors in the index."""
