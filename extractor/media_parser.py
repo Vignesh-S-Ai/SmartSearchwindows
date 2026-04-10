@@ -6,10 +6,52 @@ from pathlib import Path
 
 from PIL import Image
 from config.logger import get_logger
+from config.config import GEMINI_API_KEY, GEMINI_VISION_MODEL
 
 logger = get_logger(__name__)
 
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB limit
+
+
+def _extract_vision_text(path: Path, img: Image.Image) -> str:
+    """Extract text and description using Gemini Vision API."""
+    if not GEMINI_API_KEY:
+        return ""
+        
+    try:
+        import google.generativeai as genai
+        
+        # Configure API key
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        # Use the configured vision model
+        model = genai.GenerativeModel(GEMINI_VISION_MODEL)
+        
+        # Create a prompt for description and OCR
+        prompt = (
+            "Analyze this image in detail. "
+            "1. Provide a comprehensive description of what is in the image. "
+            "2. If there is any text (including handwriting, signs, labels, or documents), extract and transcribe all of it exactly as it appears. "
+            "3. If it's a handwritten note, specify that it is handwritten."
+        )
+        
+        # Convert image to RGB if it's not (e.g. RGBA) to avoid API issues
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+            
+        # Generate content
+        response = model.generate_content([prompt, img])
+        
+        if response.text:
+            logger.debug(f"Successfully ran vision analysis for {path}")
+            return f"\n--- Image Analysis & OCR ---\n{response.text}"
+            
+    except ImportError:
+        logger.warning("google.generativeai not installed, skipping vision extraction")
+    except Exception as e:
+        logger.warning(f"Failed to extract vision text for {path}: {e}")
+        
+    return ""
 
 
 def parse_media(path: Path) -> str:
@@ -17,7 +59,7 @@ def parse_media(path: Path) -> str:
     Parse a media file and extract metadata or text content.
 
     For images, extracts EXIF metadata, dimensions, and format info.
-    Could be extended to include OCR in the future.
+    Also uses Gemini Vision API to extract image description and OCR text.
 
     Args:
         path: Path to the media file
@@ -96,6 +138,11 @@ def parse_media(path: Path) -> str:
                         text_parts.append(f"{key}: {value}")
             except Exception:
                 pass
+
+            # Extract vision text using Gemini API
+            vision_text = _extract_vision_text(path, img)
+            if vision_text:
+                text_parts.append(vision_text)
 
             result = "\n".join(text_parts)
 
