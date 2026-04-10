@@ -171,14 +171,21 @@ class QueryEngine:
             for meta, distance in faiss_results:
                 path = meta.get("path", "")
                 if path:
-                    # Convert distance to similarity score (lower distance = higher similarity)
-                    # Use exponential decay for better scoring
-                    score = math.exp(-distance / 10.0)
-                    results[path] = (meta.get("text", ""), score)
-
-            # Update max for normalization
-            if results:
-                self._semantic_max = max(r[1] for r in results.values())
+                    # FAISS IndexFlatL2 returns squared L2 distance.
+                    # For unit-normalized embeddings (like Gemini):
+                    # dist_sq = 2 * (1 - cos_sim)
+                    # A very good match has dist_sq < 0.1 (cos_sim > 0.95)
+                    # A decent match has dist_sq < 0.4 (cos_sim > 0.8)
+                    
+                    # Convert distance to a 0-1 similarity score using exponential decay
+                    # Using a sharper decay to better separate poor matches
+                    score = math.exp(-distance * 3.0)
+                    
+                    # Only include results with a reasonable similarity
+                    if score > 0.2:
+                        # If multiple chunks from same file match, keep the best score
+                        if path not in results or score > results[path][1]:
+                            results[path] = (meta.get("text", ""), score)
 
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
@@ -204,13 +211,9 @@ class QueryEngine:
 
             # Process results
             for path, score in bm25_results:
-                # Get text from metadata if available
+                # Get text from FAISS metadata if available
                 text = self._get_text_for_path(path)
                 results[path] = (text, score)
-
-            # Update max for normalization
-            if results:
-                self._keyword_max = max(r[1] for r in results.values())
 
         except Exception as e:
             logger.error(f"Keyword search failed: {e}")
@@ -244,12 +247,11 @@ class QueryEngine:
             file_names = [Path(p).name for p in all_paths]
 
             # Use rapidfuzz process.extract for fuzzy matching
-            # This finds similar strings even with typos
             fuzzy_matches = self.fuzz_process.extract(
                 query,
                 file_names,
                 limit=k,
-                score_cutoff=50,  # Minimum score to consider
+                score_cutoff=70,  # Increased cutoff for better relevance
             )
 
             # Process fuzzy matches
@@ -261,19 +263,24 @@ class QueryEngine:
                 text = self._get_text_for_path(path)
                 results[path] = (text, score)
 
-            # Update max for normalization
-            if results:
-                self._fuzzy_max = max(r[1] for r in results.values())
-
         except Exception as e:
             logger.error(f"Fuzzy search failed: {e}")
 
         return results
 
     def _get_text_for_path(self, path: str) -> str:
-        """Get text content for a path from metadata."""
-        # This would need to be implemented with a proper text store
-        # For now, return empty string
+        """Get text content for a path from FAISS metadata."""
+        try:
+            # Try to get the first chunk text for this path from FAISS
+            if hasattr(self.faiss, "metadata") and "paths" in self.faiss.metadata:
+                indices = self.faiss.metadata["paths"].get(path, [])
+                if indices:
+                    first_idx = str(indices[0])
+                    meta = self.faiss.metadata["chunks"].get(first_idx)
+                    if meta:
+                        return meta.get("text", "")
+        except Exception:
+            pass
         return ""
 
     def _combine_results(
@@ -285,20 +292,15 @@ class QueryEngine:
     ) -> list[SearchResult]:
         """
         Combine results from all search methods and calculate final scores.
-
-        Args:
-            semantic: Semantic search results
-            keyword: Keyword search results
-            fuzzy: Fuzzy search results
-            alpha: Weight for semantic vs keyword
-
-        Returns:
-            List of SearchResult objects with combined scores
         """
         # Collect all unique paths
         all_paths = set(semantic.keys()) | set(keyword.keys()) | set(fuzzy.keys())
 
         results = []
+
+        # Get max scores for normalization of keyword scores
+        # Semantic and Fuzzy are already 0-1
+        kw_max = max([r[1] for r in keyword.values()] + [10.0])
 
         for path in all_paths:
             # Get text and scores from each source
@@ -309,17 +311,24 @@ class QueryEngine:
             # Use the longest text available
             text = sem_text or kw_text or fuzzy_text or ""
 
-            # Normalize scores to 0-1 range
-            norm_sem = sem_score / self._semantic_max if self._semantic_max > 0 else 0
-            norm_kw = kw_score / self._keyword_max if self._keyword_max > 0 else 0
-            norm_fuzzy = fuzzy_score / self._fuzzy_max if self._fuzzy_max > 0 else 0
+            # Normalize scores
+            # Semantic is already absolute (0-1)
+            # Keyword is normalized against kw_max (min 10) to avoid scaling up poor matches
+            norm_sem = sem_score
+            norm_kw = kw_score / kw_max
+            norm_fuzzy = fuzzy_score
 
             # Calculate hybrid score
-            # semantic_score * alpha + keyword_score * (1-alpha)
-            combined_keyword = norm_sem * alpha + norm_kw * (1 - alpha)
+            combined_score = norm_sem * alpha + norm_kw * (1 - alpha)
 
             # Add fuzzy boost (small additional score for fuzzy matches)
-            fuzzy_boost = norm_fuzzy * 0.1  # 10% weight for fuzzy
+            fuzzy_boost = norm_fuzzy * 0.1
+
+            final_score = combined_score + fuzzy_boost
+
+            # Filter out very low quality results
+            if final_score < 0.15:
+                continue
 
             # Create result object
             result = SearchResult(
@@ -329,8 +338,8 @@ class QueryEngine:
                 semantic_score=norm_sem,
                 keyword_score=norm_kw,
                 fuzzy_score=norm_fuzzy,
-                recency_score=0.0,  # Will be updated in recency boost
-                final_score=combined_keyword + fuzzy_boost,
+                recency_score=0.0,
+                final_score=min(1.0, final_score),
                 file_name=Path(path).name,
             )
 
@@ -372,7 +381,7 @@ class QueryEngine:
                     boost = max(0, boost)  # Ensure non-negative
 
                     result.recency_score = boost
-                    result.final_score += boost
+                    result.final_score = min(1.0, result.final_score + boost)
 
             except OSError:
                 continue
