@@ -39,6 +39,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # GEMINI_MODEL: The embedding model to use for semantic search
 GEMINI_MODEL = "models/gemini-embedding-001"
 
+# GEMINI_VISION_MODEL: The vision model to use for image analysis and OCR
+GEMINI_VISION_MODEL = "gemini-1.5-flash"
+
 # EMBEDDING_DIM: Dimension of the embedding vector (3072 for gemini-embedding-001)
 EMBEDDING_DIM = 3072
 
